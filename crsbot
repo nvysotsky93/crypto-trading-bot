@@ -1,6 +1,6 @@
 # === config.py ===
-BOT_TOKEN = "7303301306:AAEP3HVETWAyUeN87Vtu89xxMzPCbgqoZ0Q"
-MY_CHAT_ID = 1292977551  # Узнай через @userinfobot (замени на свой ID)
+BOT_TOKEN = "токен бота"
+MY_CHAT_ID = айди  # Узнай через @userinfobot (замени на свой ID)
 
 # === binance_client.py ===
 from binance.client import Client
