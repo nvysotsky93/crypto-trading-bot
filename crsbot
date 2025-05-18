@@ -1,0 +1,165 @@
+# === config.py ===
+BOT_TOKEN = "7303301306:AAEP3HVETWAyUeN87Vtu89xxMzPCbgqoZ0Q"
+MY_CHAT_ID = 1292977551  # Узнай через @userinfobot (замени на свой ID)
+
+# === binance_client.py ===
+from binance.client import Client
+
+def get_client():
+    return Client()  # Без API-ключей: только чтение публичных данных
+
+# === signals.py ===
+from binance_client import get_client
+import pandas as pd
+import ta
+from datetime import datetime
+
+def fetch_ohlcv(symbol="BTCUSDT", interval="15m", limit=100):
+    client = get_client()
+    klines = client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+    df = pd.DataFrame(klines, columns=[
+        'open_time', 'open', 'high', 'low', 'close', 'volume',
+        'close_time', 'quote_asset_volume', 'num_trades',
+        'taker_buy_base_volume', 'taker_buy_quote_volume', 'ignore'
+    ])
+    df['close'] = df['close'].astype(float)
+    df['high'] = df['high'].astype(float)
+    df['low'] = df['low'].astype(float)
+    df['volume'] = df['volume'].astype(float)
+    return df
+
+def analyze(symbol="BTCUSDT"):
+    df = fetch_ohlcv(symbol)
+    close = df['close'].iloc[-1]
+    rsi = ta.momentum.RSIIndicator(df['close']).rsi().iloc[-1]
+    macd_line = ta.trend.MACD(df['close']).macd().iloc[-1]
+    macd_signal = ta.trend.MACD(df['close']).macd_signal().iloc[-1]
+    ema20 = df['close'].ewm(span=20).mean().iloc[-1]
+    ema50 = df['close'].ewm(span=50).mean().iloc[-1]
+    sma7 = df['close'].rolling(window=7).mean().iloc[-1]
+    sma25 = df['close'].rolling(window=25).mean().iloc[-1]
+    volume_now = df['volume'].iloc[-1]
+    volume_avg = df['volume'].rolling(window=20).mean().iloc[-1]
+    range_now = df['high'].iloc[-1] - df['low'].iloc[-1]
+    range_avg = (df['high'] - df['low']).rolling(window=10).mean().iloc[-1]
+
+    score = 0
+    reasons = []
+
+    if rsi < 30:
+        score += 1
+        reasons.append("RSI < 30 (перепродан)")
+    elif rsi > 70:
+        score -= 1
+        reasons.append("RSI > 70 (перекуплен)")
+
+    if macd_line > macd_signal:
+        score += 1
+        reasons.append("MACD пересёк вверх")
+    elif macd_line < macd_signal:
+        score -= 1
+        reasons.append("MACD пересёк вниз")
+
+    if ema20 > ema50:
+        score += 1
+        reasons.append("EMA20 > EMA50 (тренд вверх)")
+    else:
+        score -= 1
+        reasons.append("EMA20 < EMA50 (тренд вниз)")
+
+    if sma7 > sma25:
+        score += 1
+        reasons.append("SMA7 > SMA25 (бычий)")
+    else:
+        score -= 1
+        reasons.append("SMA7 < SMA25 (медвежий)")
+
+    if volume_now > volume_avg:
+        score += 1
+        reasons.append("Объём выше среднего")
+    else:
+        reasons.append("Объём низкий")
+
+    if range_now < range_avg * 0.7:
+        reasons.append("Низкая волатильность — сигнал пропущен")
+        return {
+            "symbol": symbol,
+            "price": round(close, 2),
+            "signal": "WAIT",
+            "score": score,
+            "reasons": reasons,
+            "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    signal = "WAIT"
+    if score >= 3:
+        signal = "BUY"
+    elif score <= -3:
+        signal = "SELL"
+
+    return {
+        "symbol": symbol,
+        "price": round(close, 2),
+        "signal": signal,
+        "score": score,
+        "reasons": reasons,
+        "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+# === utils.py ===
+def format_signal(data):
+    msg = (
+        f"Сигнал по {data['symbol']} ({data['time']} UTC):\n"
+        f"Цена: {data['price']}\n"
+        f"Сигнал: {data['signal']} (оценка: {data['score']})\n\n"
+        f"Обоснование:\n- " + "\n- ".join(data['reasons'])
+    )
+    return msg
+
+# === bot.py ===
+from telegram.ext import Application, CommandHandler
+from apscheduler.schedulers.background import BackgroundScheduler
+from config import BOT_TOKEN, MY_CHAT_ID
+from signals import analyze
+from utils import format_signal
+import asyncio
+
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+
+async def start(update, context):
+    await update.message.reply_text("Бот активен. Используй /signal для анализа.")
+
+async def signal(update, context):
+    await update.message.reply_text("Анализирую монеты...")
+    for symbol in SYMBOLS:
+        data = analyze(symbol)
+        msg = format_signal(data)
+        await update.message.reply_text(msg)
+
+async def send_signals(app):
+    for symbol in SYMBOLS:
+        data = analyze(symbol)
+        msg = format_signal(data)
+        await app.bot.send_message(chat_id=MY_CHAT_ID, text=msg)
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("signal", signal))
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(lambda: asyncio.run(send_signals(app)), 'interval', minutes=15)
+    scheduler.start()
+
+    print("Бот работает. Сигналы каждые 15 минут.")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+
+# === requirements.txt ===
+python-telegram-bot==20.7
+python-binance==1.0.17
+pandas
+ta
+apscheduler
