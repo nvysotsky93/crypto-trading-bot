@@ -25,6 +25,17 @@ def fetch_ohlcv(symbol="BTCUSDT", interval="15m", limit=100):
 
 def analyze(symbol="BTCUSDT"):
     df = fetch_ohlcv(symbol)
+    if df is None or df.empty:
+    return {
+        "symbol": symbol,
+        "price": 0,
+        "signal": "WAIT",
+        "score": 0,
+        "reasons": ["Нет данных с Binance"],
+        "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    df = fetch_ohlcv(symbol)
     close = df['close'].iloc[-1]
     rsi = ta.momentum.RSIIndicator(df['close']).rsi().iloc[-1]
     macd_line = ta.trend.MACD(df['close']).macd().iloc[-1]
