@@ -1,11 +1,10 @@
-from binance_client import get_client
+from binance_client import get_klines
 import pandas as pd
 import ta
 from datetime import datetime
 
 def fetch_ohlcv(symbol="BTCUSDT", interval="15m", limit=100):
-    client = get_client()
-    klines = client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+    klines = get_klines(symbol, interval, limit)
     df = pd.DataFrame(klines, columns=[
         'open_time', 'open', 'high', 'low', 'close', 'volume',
         'close_time', 'quote_asset_volume', 'num_trades',
