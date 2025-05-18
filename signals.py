@@ -4,17 +4,24 @@ import ta
 from datetime import datetime
 
 def fetch_ohlcv(symbol="BTCUSDT", interval="15m", limit=100):
-    klines = get_klines(symbol, interval, limit)
-    df = pd.DataFrame(klines, columns=[
-        'open_time', 'open', 'high', 'low', 'close', 'volume',
-        'close_time', 'quote_asset_volume', 'num_trades',
-        'taker_buy_base_volume', 'taker_buy_quote_volume', 'ignore'
-    ])
-    df['close'] = df['close'].astype(float)
-    df['high'] = df['high'].astype(float)
-    df['low'] = df['low'].astype(float)
-    df['volume'] = df['volume'].astype(float)
-    return df
+    try:
+        klines = get_klines(symbol, interval, limit)
+        if not klines or len(klines) == 0:
+            print(f"[ERROR] Пустые данные от Binance для {symbol}")
+            return None
+        df = pd.DataFrame(klines, columns=[
+            'open_time', 'open', 'high', 'low', 'close', 'volume',
+            'close_time', 'quote_asset_volume', 'num_trades',
+            'taker_buy_base_volume', 'taker_buy_quote_volume', 'ignore'
+        ])
+        df['close'] = df['close'].astype(float)
+        df['high'] = df['high'].astype(float)
+        df['low'] = df['low'].astype(float)
+        df['volume'] = df['volume'].astype(float)
+        return df
+    except Exception as e:
+        print(f"[ERROR] Ошибка получения данных для {symbol}: {e}")
+        return None
 
 def analyze(symbol="BTCUSDT"):
     df = fetch_ohlcv(symbol)
